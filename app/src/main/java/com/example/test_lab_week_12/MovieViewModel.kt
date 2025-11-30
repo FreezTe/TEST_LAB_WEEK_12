@@ -1,30 +1,48 @@
 package com.example.test_lab_week_12
 
-import androidx.lifecycle.LiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.test_lab_week_12.MovieRepository
 import com.example.test_lab_week_12.model.Movie
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
+import java.util.Calendar
 
-class MovieViewModel(private val movieRepository: MovieRepository)
-    : ViewModel() {
+class MovieViewModel(private val movieRepository: MovieRepository) : ViewModel() {
+
+    // ------- StateFlow pengganti LiveData -------
+    private val _popularMovies = MutableStateFlow(emptyList<Movie>())
+    val popularMovies: StateFlow<List<Movie>> = _popularMovies
+
+    private val _error = MutableStateFlow("")
+    val error: StateFlow<String> = _error
+
     init {
         fetchPopularMovies()
     }
-    // define the LiveData
-    val popularMovies: LiveData<List<Movie>>
-        get() = movieRepository.movies
-    val error: LiveData<String>
-        get() = movieRepository.error
 
-    // fetch movies from the API
+    // ------- fetch dengan Flow + FILTER (ASSIGNMENT) -------
     private fun fetchPopularMovies() {
-        // launch a coroutine in viewModelScope
-        // Dispatchers.IO means that this coroutine will run on a shared
-        //pool of threads
         viewModelScope.launch(Dispatchers.IO) {
+            val currentYear = Calendar.getInstance().get(Calendar.YEAR).toString()
+
             movieRepository.fetchMovies()
+                .catch { exception ->
+                    _error.value = "An exception occurred: ${exception.message}"
+                }
+                .collect { movies ->
+                    // di sini kita pasang FILTER + SORT
+                    val filtered = movies
+                        .filter { movie ->
+                            movie.releaseDate?.startsWith(currentYear) == true
+                        }
+                        .sortedByDescending { it.popularity }
+
+                    _popularMovies.value = filtered
+                }
         }
     }
 }
